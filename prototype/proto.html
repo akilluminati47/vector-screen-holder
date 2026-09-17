@@ -1,0 +1,550 @@
+<meta charset="utf-8">
+<title>Line Art Engine Prototype</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; background:#0a0b0e; color:#c9cdd6; font:13px ui-sans-serif,system-ui,sans-serif; }
+  header { padding:10px 16px; border-bottom:1px solid #1c1f26; display:flex; gap:16px; align-items:center; }
+  h1 { font-size:14px; margin:0; font-weight:600; letter-spacing:.02em; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:1px; background:#1c1f26; }
+  .panel { position:relative; background:#05060a; }
+  .panel canvas { display:block; width:100%; height:auto; }
+  .label, .stat, .ctl { opacity:0; transition:opacity .45s ease; }
+  .panel.hud .label, .panel.hud .stat, .panel.hud .ctl { opacity:1; }
+  .label { position:absolute; left:10px; top:8px; font:11px ui-monospace,monospace; color:#7d8492; letter-spacing:.08em; text-transform:uppercase; pointer-events:none; text-shadow:0 1px 3px #000; }
+  .stat { position:absolute; right:10px; top:8px; font:11px ui-monospace,monospace; color:#525a68; pointer-events:none; text-shadow:0 1px 3px #000; }
+  .ctl { position:absolute; left:0; right:0; bottom:0; display:flex; gap:10px; align-items:center;
+         padding:7px 10px; background:linear-gradient(transparent,#000a); font:11px ui-monospace,monospace; }
+  .ctl input[type=range] { flex:1; accent-color:#6ea8ff; height:3px; }
+  .ctl .pname { color:#8891a0; min-width:96px; }
+  .ctl .en { color:#8891a0; display:flex; gap:4px; align-items:center; }
+  .ctl .pamt { color:#7d8492; min-width:64px; text-align:right; }
+  .ctl .pval { color:#cfd5e0; min-width:34px; text-align:right; }
+  .panel.off canvas { opacity:.12; filter:grayscale(1); }
+  .panel.off .label::after { content:' (disabled)'; color:#6b4a4a; }
+  .closed { position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+            background:#05060a; color:#4a515e; font:12px ui-monospace,monospace; letter-spacing:.1em; }
+  .panel.closed-state .closed { display:flex; }
+  button { background:#151922; color:#c9cdd6; border:1px solid #262b36; border-radius:5px; padding:5px 10px; font:12px inherit; cursor:pointer; }
+</style>
+
+<header>
+  <h1>Line Art Engine — algorithm bench</h1>
+  <button onclick="regenAll()">Regenerate all</button>
+  <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="rot"> rotate every
+    <input type="number" id="rotSec" value="20" min="3" max="600" style="width:56px;background:#151922;color:#c9cdd6;border:1px solid #262b36;border-radius:4px;padding:2px 4px"> s</label>
+  <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="ramp"> auto colour ramp
+    <input type="number" id="rampSpeed" value="12" min="1" max="360" style="width:56px;background:#151922;color:#c9cdd6;border:1px solid #262b36;border-radius:4px;padding:2px 4px"> °/s</label>
+  <span style="color:#5d6470">wheel = parameter · right-click = amount · click = cycle · hold Space = colour · Esc = close</span>
+  <span id="fps" style="font:11px ui-monospace,monospace;color:#5d6470"></span>
+</header>
+
+<div class="grid" id="grid"></div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Perlin noise (Ken Perlin's improved noise, 3D) — trivially portable to C++
+// ---------------------------------------------------------------------------
+const PERM = new Uint8Array(512);
+function seedNoise(seed) {
+  let p = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) p[i] = i;
+  let s = seed >>> 0 || 1;
+  const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  for (let i = 255; i > 0; i--) { const j = (rnd() * (i + 1)) | 0; const t = p[i]; p[i] = p[j]; p[j] = t; }
+  for (let i = 0; i < 512; i++) PERM[i] = p[i & 255];
+}
+const fade = t => t * t * t * (t * (t * 6 - 15) + 10);
+function grad3(h, x, y, z) {
+  switch (h & 15) {
+    case 0: return  x + y; case 1: return -x + y; case 2: return  x - y; case 3: return -x - y;
+    case 4: return  x + z; case 5: return -x + z; case 6: return  x - z; case 7: return -x - z;
+    case 8: return  y + z; case 9: return -y + z; case 10: return  y - z; case 11: return -y - z;
+    case 12: return  y + x; case 13: return -y + z; case 14: return  y - x; default: return -y - z;
+  }
+}
+function noise3(x, y, z) {
+  const X = Math.floor(x) & 255, Y = Math.floor(y) & 255, Z = Math.floor(z) & 255;
+  x -= Math.floor(x); y -= Math.floor(y); z -= Math.floor(z);
+  const u = fade(x), v = fade(y), w = fade(z);
+  const A = PERM[X] + Y, AA = PERM[A] + Z, AB = PERM[A + 1] + Z;
+  const B = PERM[X + 1] + Y, BA = PERM[B] + Z, BB = PERM[B + 1] + Z;
+  const lerp = (t, a, b) => a + t * (b - a);
+  return lerp(w,
+    lerp(v, lerp(u, grad3(PERM[AA], x, y, z),     grad3(PERM[BA], x - 1, y, z)),
+            lerp(u, grad3(PERM[AB], x, y - 1, z), grad3(PERM[BB], x - 1, y - 1, z))),
+    lerp(v, lerp(u, grad3(PERM[AA + 1], x, y, z - 1),     grad3(PERM[BA + 1], x - 1, y, z - 1)),
+            lerp(u, grad3(PERM[AB + 1], x, y - 1, z - 1), grad3(PERM[BB + 1], x - 1, y - 1, z - 1))));
+}
+function fbm(x, y, z, oct) {
+  let a = 0.5, f = 1, sum = 0, norm = 0;
+  for (let i = 0; i < oct; i++) { sum += a * noise3(x * f, y * f, z * f); norm += a; a *= 0.5; f *= 2; }
+  return sum / norm;
+}
+
+// ---------------------------------------------------------------------------
+// Palettes
+// ---------------------------------------------------------------------------
+const PALETTES = {
+  aurora:  { bg:'#05070d', ink:['#7fe7cf','#5fb3ff','#a68bff','#ff7fd0','#e8f3ff'] },
+  ember:   { bg:'#0d0603', ink:['#ffb066','#ff6a3d','#ffd98a','#e0503a','#fff0d8'] },
+  ocean:   { bg:'#02080f', ink:['#4fd1f5','#59a5ff','#8fe9ff','#3b6fd4','#dff6ff'] },
+  mono:    { bg:'#07070a', ink:['#e8e9ee','#b9bcc6','#8a8f9c','#5e636f','#ffffff'] },
+};
+
+function hexToRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+// Hue rotation applied at STROKE time rather than to the finished image.
+// Direct2D 1.0 has no hue-rotate effect, so the port does exactly this: shift
+// the ink before drawing. Styles that redraw every frame (contours) slide
+// through colour wholesale; styles that accumulate (flow, growth) lay down a
+// gradient through the artwork as the hue drifts.
+function shiftHue(hex, deg) {
+  if (!deg) return hex;
+  let [r, g, b] = hexToRgb(hex);
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+  let h = 0, sat = 0;
+  if (mx !== mn) {
+    const dd = mx - mn;
+    sat = l > 0.5 ? dd / (2 - mx - mn) : dd / (mx + mn);
+    if (mx === r) h = (g - b) / dd + (g < b ? 6 : 0);
+    else if (mx === g) h = (b - r) / dd + 2;
+    else h = (r - g) / dd + 4;
+    h /= 6;
+  }
+  h = (h + deg / 360) % 1;
+  if (h < 0) h += 1;
+  const hue2 = (p, q, t) => {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  let R, G, B;
+  if (sat === 0) { R = G = B = l; }
+  else {
+    const q = l < 0.5 ? l * (1 + sat) : l + sat - l * sat;
+    const pp = 2 * l - q;
+    R = hue2(pp, q, h + 1 / 3); G = hue2(pp, q, h); B = hue2(pp, q, h - 1 / 3);
+  }
+  const to = v => Math.round(v * 255).toString(16).padStart(2, '0');
+  return '#' + to(R) + to(G) + to(B);
+}
+
+function lerpHex(h1, h2, t) {
+  const a = hexToRgb(h1), b = hexToRgb(h2);
+  const m = (i) => Math.round(a[i] + (b[i] - a[i]) * t);
+  return '#' + [m(0), m(1), m(2)].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+function rgba(hex, a) { const [r,g,b] = hexToRgb(hex); return `rgba(${r},${g},${b},${a})`; }
+
+class Rng {
+  constructor(s) { this.s = (s >>> 0) || 1; }
+  next() { this.s = (this.s * 1664525 + 1013904223) >>> 0; return this.s / 4294967296; }
+  range(a, b) { return a + (b - a) * this.next(); }
+  int(a, b) { return a + Math.floor(this.next() * (b - a + 1)); }
+  pick(arr) { return arr[Math.floor(this.next() * arr.length)]; }
+  sign() { return this.next() < 0.5 ? -1 : 1; }
+}
+
+// ===========================================================================
+// SCENE 1 — Flow field ribbons (Fidenza-like), progressive draw with
+//           collision-avoidance packing. Strokes only.
+// ===========================================================================
+class FlowScene {
+  constructor(w, h, seed, pal, amt) {
+    this.amt = amt === undefined ? 2 : amt;
+    this.w = w; this.h = h; this.pal = pal;
+    this.rng = new Rng(seed);
+    seedNoise(seed);
+    this.reset();
+  }
+  reset() {
+    const r = this.rng, w = this.w, h = this.h;
+    this.diag = Math.hypot(w, h);
+    this.scale = r.range(0.0016, 0.0032);
+    this.zt = r.range(0, 100);
+    this.turns = r.range(1.4, 3.2);
+    const SEP_MUL = [2.20, 1.50, 1.00, 0.72, 0.54];
+    this.sep = this.diag * r.range(0.010, 0.021) * SEP_MUL[this.amt];   // packing separation
+    this.step = Math.max(2.0, this.diag * 0.0035);
+    this.cell = this.sep * 0.5;
+    this.gw = Math.ceil(w / this.cell) + 2;
+    this.gh = Math.ceil(h / this.cell) + 2;
+    this.grid = new Int32Array(this.gw * this.gh).fill(-1);
+    this.curves = [];
+    this.done = false;
+    this.attempts = 0;
+    this.maxCurves = 900;
+    this.minSteps = 32;
+    this.spawnCursor = 0;
+    this.active = [];
+    // Seed points on a jittered lattice so the field fills evenly.
+    this.seeds = [];
+    const nx = 54, ny = 38;
+    for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
+      this.seeds.push([ (i + r.range(0.1,0.9)) / nx * w, (j + r.range(0.1,0.9)) / ny * h ]);
+    }
+    for (let i = this.seeds.length - 1; i > 0; i--) { const j = r.int(0, i); const t = this.seeds[i]; this.seeds[i] = this.seeds[j]; this.seeds[j] = t; }
+  }
+  angleAt(x, y) {
+    return fbm(x * this.scale, y * this.scale, this.zt, 3) * Math.PI * 2 * this.turns;
+  }
+  markable(x, y, id) {
+    const cx = (x / this.cell + 1) | 0, cy = (y / this.cell + 1) | 0;
+    if (cx < 1 || cy < 1 || cx >= this.gw - 1 || cy >= this.gh - 1) return false;
+    for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+      const v = this.grid[(cy + j) * this.gw + (cx + i)];
+      if (v !== -1 && v !== id) return false;
+    }
+    return true;
+  }
+  mark(x, y, id) {
+    const cx = (x / this.cell + 1) | 0, cy = (y / this.cell + 1) | 0;
+    if (cx < 0 || cy < 0 || cx >= this.gw || cy >= this.gh) return;
+    this.grid[cy * this.gw + cx] = id;
+  }
+  // Trace a whole curve up front. If it dies too early we roll back the cells
+  // it claimed and try the next seed -- that is what removes the confetti of
+  // short stubs; only curves worth looking at ever get drawn.
+  spawn() {
+    while (this.spawnCursor < this.seeds.length) {
+      const [sx, sy] = this.seeds[this.spawnCursor++];
+      const id = this.curves.length;
+      if (!this.markable(sx, sy, id)) continue;
+      const r = this.rng;
+      const dir = r.sign();
+      const maxLife = r.int(260, 900);
+      const spine = [[sx, sy]];
+      const claimed = [];
+      let x = sx, y = sy;
+      for (let i = 0; i < maxLife; i++) {
+        const a = this.angleAt(x, y);
+        const nx = x + Math.cos(a) * this.step * dir;
+        const ny = y + Math.sin(a) * this.step * dir;
+        if (!this.markable(nx, ny, id)) break;
+        const cx = (nx / this.cell + 1) | 0, cy = (ny / this.cell + 1) | 0;
+        const idx = cy * this.gw + cx;
+        if (this.grid[idx] === -1) claimed.push(idx);
+        this.grid[idx] = id;
+        spine.push([nx, ny]);
+        x = nx; y = ny;
+      }
+      if (spine.length < this.minSteps) {
+        for (const idx of claimed) this.grid[idx] = -1;   // roll back
+        continue;
+      }
+      const c = {
+        id, spine, at: 1,
+        nLines: r.int(2, 4),
+        width: this.sep * r.range(0.55, 0.92),
+        color: r.pick(this.pal.ink),
+        lw: r.range(0.75, 1.25),
+        alpha: r.range(0.72, 1.0),
+        prevPts: null,
+      };
+      this.curves.push(c);
+      this.active.push(c);
+      return c;
+    }
+    return null;
+  }
+  // walk the pre-traced spines, emitting the ribbon segments to draw
+  step_(out) {
+    while (this.active.length < 26 && this.curves.length < this.maxCurves) {
+      if (!this.spawn()) break;
+    }
+    if (this.active.length === 0) { this.done = true; return; }
+    for (let k = this.active.length - 1; k >= 0; k--) {
+      const c = this.active[k];
+      if (c.at >= c.spine.length) { this.active.splice(k, 1); continue; }
+      const [nx, ny] = c.spine[c.at];
+      const [px, py] = c.spine[c.at - 1];
+      const dx = nx - px, dy = ny - py, len = Math.hypot(dx, dy) || 1;
+      const ox = -dy / len, oy = dx / len;
+      const taper = Math.sin((c.at / c.spine.length) * Math.PI);
+      const halfW = c.width * (0.35 + 0.65 * taper);
+      const pts = [];
+      for (let i = 0; i < c.nLines; i++) {
+        const t = c.nLines === 1 ? 0 : (i / (c.nLines - 1) - 0.5) * 2;
+        pts.push([nx + ox * halfW * t, ny + oy * halfW * t]);
+      }
+      if (c.prevPts) out.push({ c, from: c.prevPts, to: pts });
+      c.prevPts = pts;
+      c.at++;
+    }
+  }
+}
+
+// ===========================================================================
+// SCENE 2 — Topographic contours (marching squares on animated fbm)
+// ===========================================================================
+class ContourScene {
+  static LEVELS = [6, 12, 21, 32, 46];
+  constructor(w, h, seed, pal, amt) {
+    this.amt = amt === undefined ? 2 : amt;
+    this.w = w; this.h = h; this.pal = pal;
+    this.rng = new Rng(seed ^ 0x9e37);
+    seedNoise(seed ^ 0x9e37);
+    this.res = Math.max(60, Math.round(w / 9));
+    this.rows = Math.max(40, Math.round(h / 9));
+    this.cw = w / this.res; this.ch = h / this.rows;
+    this.field = new Float32Array((this.res + 1) * (this.rows + 1));
+    this.levels = ContourScene.LEVELS[this.amt];
+    this.scale = this.rng.range(2.2, 3.6);
+    this.z = this.rng.range(0, 50);
+    this.warp = this.rng.range(0.15, 0.5);
+  }
+  sample(t) {
+    const R = this.res, C = this.rows, s = this.scale, z = this.z + t * 0.05;
+    for (let j = 0; j <= C; j++) {
+      const v = j / C;
+      for (let i = 0; i <= R; i++) {
+        const u = i / R;
+        // domain warp gives contours their organic, terrain-like character
+        const wx = fbm(u * s + 5.2, v * s + 1.3, z, 2) * this.warp;
+        const wy = fbm(u * s + 9.7, v * s + 4.1, z, 2) * this.warp;
+        this.field[j * (R + 1) + i] = fbm(u * s + wx, v * s + wy, z, 4);
+      }
+    }
+  }
+  // classic marching squares -> line segments at each iso level
+  contour(level, emit) {
+    const R = this.res, C = this.rows, F = this.field;
+    const at = (i, j) => F[j * (R + 1) + i];
+    const ix = (a, b, va, vb) => a + (b - a) * ((level - va) / (vb - va || 1e-6));
+    for (let j = 0; j < C; j++) {
+      for (let i = 0; i < R; i++) {
+        const v0 = at(i, j), v1 = at(i + 1, j), v2 = at(i + 1, j + 1), v3 = at(i, j + 1);
+        let code = 0;
+        if (v0 > level) code |= 1; if (v1 > level) code |= 2;
+        if (v2 > level) code |= 4; if (v3 > level) code |= 8;
+        if (code === 0 || code === 15) continue;
+        const x0 = i * this.cw, y0 = j * this.ch, x1 = x0 + this.cw, y1 = y0 + this.ch;
+        const T = () => [ix(x0, x1, v0, v1), y0];
+        const Rr = () => [x1, ix(y0, y1, v1, v2)];
+        const B = () => [ix(x0, x1, v3, v2), y1];
+        const L = () => [x0, ix(y0, y1, v0, v3)];
+        switch (code) {
+          case 1: case 14: emit(L(), T()); break;
+          case 2: case 13: emit(T(), Rr()); break;
+          case 3: case 12: emit(L(), Rr()); break;
+          case 4: case 11: emit(Rr(), B()); break;
+          case 6: case 9:  emit(T(), B()); break;
+          case 7: case 8:  emit(L(), B()); break;
+          case 5:  emit(L(), T()); emit(Rr(), B()); break;
+          case 10: emit(T(), Rr()); emit(L(), B()); break;
+        }
+      }
+    }
+  }
+}
+
+// ===========================================================================
+// SCENE 3 — Differential growth (inconvergent-style organic line)
+// ===========================================================================
+class GrowthScene {
+  static LOOPS = [1, 2, 3, 4, 6];
+  constructor(w, h, seed, pal, amt) {
+    this.amt = amt === undefined ? 2 : amt;
+    this.w = w; this.h = h; this.pal = pal;
+    this.rng = new Rng(seed ^ 0x51ed);
+    seedNoise(seed ^ 0x51ed);
+    this.reset();
+  }
+  reset() {
+    const r = this.rng, m = Math.min(this.w, this.h);
+    this.maxLen = m * 0.0085;
+    this.repel  = this.maxLen * 2.4;
+    this.baseRepel = this.repel;
+    this.cell   = this.repel;
+    this.nodeBudget = 1500;   // per colony; total is set once nLoops is known
+    this.zt = r.range(0, 40);
+    this.loops = [];
+    const nLoops = GrowthScene.LOOPS[this.amt];
+    this.maxNodes = Math.min(7000, this.nodeBudget * nLoops);
+    for (let k = 0; k < nLoops; k++) {
+      // keep colonies apart so they stay readable instead of merging to a blob
+      let cx = 0, cy = 0;
+      for (let tries = 0; tries < 40; tries++) {
+        cx = r.range(this.w * 0.16, this.w * 0.84);
+        cy = r.range(this.h * 0.18, this.h * 0.82);
+        let ok = true;
+        for (const L of this.loops) {
+          const c0 = L.nodes[0];
+          if (Math.hypot(cx - L.cx, cy - L.cy) < m * (0.62 / Math.max(1, nLoops - 1))) { ok = false; break; }
+        }
+        if (ok) break;
+      }
+      const rad = m * r.range(0.045, 0.075);
+      const n = Math.max(24, Math.ceil(2 * Math.PI * rad / (this.maxLen * 1.35)));
+      const nodes = [];
+      for (let i = 0; i < n; i++) {
+        const a = i / n * Math.PI * 2;
+        nodes.push({ x: cx + Math.cos(a) * rad, y: cy + Math.sin(a) * rad, vx: 0, vy: 0 });
+      }
+      this.loops.push({ nodes, cx, cy, color: r.pick(this.pal.ink), lw: r.range(0.5, 0.9) });
+    }
+    this.gen = 0;
+    this.done = false;
+  }
+  total() { let t = 0; for (const L of this.loops) t += L.nodes.length; return t; }
+  step_() {
+    // one shared spatial hash so the loops repel each OTHER as well as themselves
+    const cell = this.cell, buckets = new Map();
+    const all = [];
+    for (const L of this.loops) for (const nd of L.nodes) all.push(nd);
+    for (const nd of all) {
+      const k = ((nd.x / cell) | 0) + ',' + ((nd.y / cell) | 0);
+      let b = buckets.get(k); if (!b) { b = []; buckets.set(k, b); }
+      b.push(nd);
+    }
+    for (const L of this.loops) {
+      const N = L.nodes, n = N.length;
+      if (n < 3) continue;
+      for (let i = 0; i < n; i++) {
+        const a = N[i], prev = N[(i - 1 + n) % n], next = N[(i + 1) % n];
+        let fx = (prev.x + next.x - 2 * a.x) * 0.20;
+        let fy = (prev.y + next.y - 2 * a.y) * 0.20;
+        const bx = (a.x / cell) | 0, by = (a.y / cell) | 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const b = buckets.get((bx + dx) + ',' + (by + dy));
+          if (!b) continue;
+          for (const o of b) {
+            if (o === a) continue;
+            const ox = a.x - o.x, oy = a.y - o.y;
+            const d2 = ox * ox + oy * oy;
+            if (d2 < 1e-6 || d2 > this.repel * this.repel) continue;
+            const d = Math.sqrt(d2);
+            const f = (1 - d / this.repel) * 1.35;
+            fx += ox / d * f; fy += oy / d * f;
+          }
+        }
+        const nz = fbm(a.x * 0.0045, a.y * 0.0045, this.zt, 2);
+        fx += Math.cos(nz * 14) * 0.16; fy += Math.sin(nz * 14) * 0.16;
+        a.vx = (a.vx + fx) * 0.60; a.vy = (a.vy + fy) * 0.60;
+      }
+      for (let i = 0; i < n; i++) {
+        const a = N[i];
+        a.x = Math.max(6, Math.min(this.w - 6, a.x + a.vx));
+        a.y = Math.max(6, Math.min(this.h - 6, a.y + a.vy));
+      }
+    }
+    if (this.total() < this.maxNodes) {
+      let grew = 0;
+      for (const L of this.loops) {
+        const N = L.nodes;
+        for (let i = N.length - 1; i >= 0; i--) {
+          const a = N[i], b = N[(i + 1) % N.length];
+          if (Math.hypot(b.x - a.x, b.y - a.y) > this.maxLen) {
+            N.splice(i + 1, 0, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, vx: 0, vy: 0 });
+            grew++;
+          }
+        }
+      }
+      // never let a colony sit at equilibrium: force the longest segment open
+      if (grew === 0) {
+        for (const L of this.loops) {
+          const N = L.nodes;
+          let best = -1, bestD = -1;
+          for (let i = 0; i < N.length; i++) {
+            const a = N[i], b = N[(i + 1) % N.length];
+            const d = Math.hypot(b.x - a.x, b.y - a.y);
+            if (d > bestD) { bestD = d; best = i; }
+          }
+          if (best >= 0) {
+            const a = N[best], b = N[(best + 1) % N.length];
+            N.splice(best + 1, 0, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, vx: 0, vy: 0 });
+          }
+        }
+      }
+    } else {
+      this.done = true;
+    }
+    this.zt += 0.0025;
+    this.gen++;
+  }
+  // the live outline, stroked bright on top of the faint accumulated history
+  paintCrisp(ctx) {
+    for (const L of this.loops) {
+      const N = L.nodes;
+      if (N.length < 3) continue;
+      ctx.strokeStyle = rgba(ink(L.color), 0.85);
+      ctx.lineWidth = L.lw;
+      ctx.beginPath();
+      ctx.moveTo(N[0].x, N[0].y);
+      for (let i = 1; i < N.length; i++) ctx.lineTo(N[i].x, N[i].y);
+      ctx.closePath();
+      ctx.stroke();
+    }
+  }
+  // every substep is stamped into the buffer at low alpha, so the history of
+  // the growth accumulates into a dense layered structure
+  paint(ctx) {
+    for (const L of this.loops) {
+      const N = L.nodes;
+      if (N.length < 3) continue;
+      ctx.strokeStyle = rgba(ink(L.color), 0.05);
+      ctx.lineWidth = L.lw;
+      ctx.beginPath();
+      ctx.moveTo(N[0].x, N[0].y);
+      for (let i = 1; i < N.length; i++) ctx.lineTo(N[i].x, N[i].y);
+      ctx.closePath();
+      ctx.stroke();
+    }
+  }
+}
+
+// ===========================================================================
+// SCENE 4 — Harmonograph mesh (decaying pendulum curves), progressive draw
+// ===========================================================================
+class HarmonographScene {
+  static FIGS = [1, 2, 3, 4, 6];
+  constructor(w, h, seed, pal, amt) {
+    this.amt = amt === undefined ? 2 : amt;
+    this.w = w; this.h = h; this.pal = pal;
+    this.rng = new Rng(seed ^ 0x2f19);
+    this.reset();
+  }
+  reset() {
+    const r = this.rng;
+    this.figs = [];
+    const count = HarmonographScene.FIGS[this.amt];
+    const m = Math.min(this.w, this.h);
+    for (let k = 0; k < count; k++) {
+      // simple integer ratios read as deliberate figures, not noise
+      const fx = r.int(1, 5);
+      let fy = r.int(1, 5);
+      if (fy === fx) fy = (fx % 5) + 1;   // equal ratios collapse to a flat lens
+      const detune = r.range(0.002, 0.010) * r.sign();
+      this.figs.push({
+        a: [r.range(0.26,0.40) * m, r.range(0.10,0.22) * m,
+            r.range(0.26,0.40) * m, r.range(0.10,0.22) * m],
+        f: [fx, fx + detune, fy, fy + detune * r.sign()],
+        p: [r.range(0,6.28), r.range(0,6.28), r.range(0,6.28), r.range(0,6.28)],
+        d: (() => { const dd = r.range(0.0006, 0.0012); return [dd, dd, dd, dd]; })(),
+        color: r.pick(this.pal.ink),
+        lw: r.range(0.45, 0.75),
+        alpha: r.range(0.22, 0.42),
+        t: 0,
+        tEnd: r.range(2000, 2800),
+        last: null,
+      });
+    }
+    this.done = false;
+  }
+  pointAt(fig, t) {
+    const { a, f, p, d } = fig;
+    const x = a[0] * Math.sin(f[0] * t * 0.05 + p[0]) * Math.exp(-d[0] * t)
+            + a[1] * Math.sin(f[1] * t * 0.05 + p[1]) * Math.exp(-d[1] * t);
+    const y = a[2] * Math.sin(f[2] * t * 0.05 + p[2]) * Math.exp(-d[2] * t)
+            + a[3] * Math.sin(f[3] * t * 0.05 + p[3]) * Math.exp(-d[3] * t);
+    return [this.w / 2 + x, this.h / 2 + y];
+  }
+}
+
+</script>
+<script src="driver.js"></script>
+<script>
+
