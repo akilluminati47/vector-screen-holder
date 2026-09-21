@@ -1,7 +1,9 @@
 # Vector Screen Holder
 
 A [Windhawk](https://windhawk.net) mod that fills a display of your choosing with
-generative line art and holds the screen awake while it runs.
+generative line art and holds the screen awake while it runs. Your primary
+display, any single one you name, all of them at once, or all but the primary,
+which leaves the screen you work on alone and covers the side monitors.
 
 ![The overlay running on a portrait monitor while a note is typed in Notepad](assets/typing.gif)
 
