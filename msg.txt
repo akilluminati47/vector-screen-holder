@@ -1,0 +1,31 @@
+Vector Screen Holder 1.4.4
+
+Catching the standalone copy up with the submission, which has moved three
+versions while this sat at 1.3.1.
+
+What changed for anyone using it:
+
+The global palette key is gone. It was Space at first, which stepped the
+palette on every space character typed anywhere, then Ctrl+Shift+Space, which
+collided with Word and the usual editors. The setting was bundling a safety
+valve with a convenience: Esc from anywhere matters because the overlay covers
+a display and you should always be able to dismiss it, while stepping the
+palette from anywhere is a nicety, and nobody could take the first without the
+second. The setting is now Global Esc and watches that one key. Space still
+steps the palette when the overlay has focus.
+
+Click through to the desktop is new. The overlay covers the desktop icons on
+its display and by default swallows clicks meant for them, which is the one
+real complaint about running it on a single monitor. With this on, every click
+passes to the desktop and the icons keep working under the art. The overlay
+takes no input at all in that mode, so the hotkey and Global Esc drive it.
+
+Style, amount and wheel parameter now survive a reboot rather than only a
+clean hide, the artwork no longer restarts when a display event changes
+nothing, and a second keyboard hook can no longer stack on an abandoned one.
+
+Nothing here reads or writes the registry, touches the filesystem or goes to
+the network, and it still runs as a tool mod in its own process rather than
+being injected into anything.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

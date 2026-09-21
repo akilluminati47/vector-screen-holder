@@ -18,16 +18,23 @@ put it on a side monitor next to your task monitor, and go to lunch.
 
 | Input | What it does |
 | --- | --- |
-| **Esc** | Close the overlay |
+| **Esc** | Close the overlay, once it has focus, or from anywhere with **Global Esc** on |
 | **Left click** | Cycle to the next enabled style |
 | **Right click** | Step the amount (how much information is on screen) |
 | **Mouse wheel** | Adjust the current style's parameter |
-| **Space** | Step to the next palette |
+| **Space** | Step to the next palette, once the overlay has focus |
 | **Ctrl+Alt+H** | Toggle the overlay (configurable) |
 
 The overlay sits above your wallpaper but *below* your windows: anything you
 open covers it normally, it never steals focus by itself, and it stays out of
 Alt+Tab.
+
+It does cover the desktop icons on the display it runs on, and by default a
+click there lands on the overlay rather than the desktop. Turn on **Click
+through to the desktop** and every click passes to the desktop instead, so the
+icons keep working with the art drawn over them. The trade is that the overlay
+takes no input at all in that mode: the hotkey shows and hides it, and **Global
+Esc** closes it.
 
 ![The overlay sitting below an application window](assets/window-on-top.png)
 

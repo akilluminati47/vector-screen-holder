@@ -34,7 +34,7 @@
 // @description:ko-KR 선택한 디스플레이를 제너러티브 라인 아트로 채우고 실행 중에는 PC가 유휴 상태로 전환되지 않도록 합니다
 // @description:ar   يملأ الشاشة التي تختارها بفن خطي توليدي ويمنع الكمبيوتر من الخمول أثناء تشغيله
 // @description:he   ממלא מסך לבחירתך באמנות קווית גנרטיבית ומונע מהמחשב לעבור למצב סרק בזמן שהוא פועל
-// @version         1.3.1
+// @version         1.4.4
 // @author          akilluminati47
 // @github          https://github.com/akilluminati47
 // @homepage        https://vector.akilluminati47.pages.dev/
@@ -113,39 +113,65 @@ cycle the style as usual.
 **Ctrl+Alt+H works from anywhere**, so you can always close the overlay even
 when something else has focus.
 
+If you turn on **Click through to the desktop**, none of the controls above
+apply: every click goes to the desktop instead, which is the point of it, and
+the overlay never takes focus, so it never sees a key either. It runs on what
+you set in the settings. The hotkey still shows and hides it, and **Global
+Esc** still closes it if you have that on.
+
 **Start active** brings the overlay up as soon as the mod loads. Windhawk loads
 its mods when you sign in, so that means it is waiting on your chosen display
 after every reboot, not just the time you ticked the box.
 
 The mod also listens on a named event, `Local\WindhawkVectorScreenHolderToggle`,
 in the per-session namespace, so an ordinary Windows shortcut can toggle the
-overlay without opening Windhawk at all. The one line that drives it is on
-[the site](https://vector.akilluminati47.pages.dev/).
+overlay without opening Windhawk at all. Save this as
+`toggle-screen-holder.vbs` and make a shortcut to it:
 
-If you would rather **Esc** and **Space** reached the overlay from any
-application, turn on **Global Esc and Space** in the settings. It is off by
-default on purpose: Esc is a heavily used key, and a reflexive press meant for
-a dialog or a search box in another window would end the session and release
-the keep-awake with nothing on screen to say it had happened.
+```vbs
+CreateObject("WScript.Shell").Run "powershell -nop -w hidden -c ""[Threading.EventWaitHandle]::OpenExisting('Local\WindhawkVectorScreenHolderToggle').Set()""", 0, False
+```
+
+The mod has to be **enabled in Windhawk** for that to do anything, because
+the event only exists while the mod is loaded. The overlay itself does not
+have to be on screen.
+
+If you would rather **Esc** reached the overlay from any application, turn on
+**Global Esc** in the settings. It is off by default because Esc is a heavily
+used key, and a reflexive press meant for a dialog or a search box in another
+window would end the session and release the keep-awake with nothing on screen
+to say it had happened. Esc is the only key watched that way, and it is never
+swallowed, so the application you are in still receives it.
 
 The overlay sits above your wallpaper but *below* your windows: anything you
 open covers it normally, and it never steals focus by itself or appears in
 Alt+Tab.
 
-It does cover the desktop icons on the display it runs on, and a click there
-goes to the overlay rather than the desktop. That is inherent to sitting above
-the wallpaper. The **Display** setting defaults to your primary screen, which
-is the right choice on a single monitor machine; on more than one, point it at
-whichever display you are not working on and your icons stay reachable. Either
-way the overlay only goes for good when you press Esc or toggle it off.
+It does cover the desktop icons on the display it runs on, and by default a
+click there goes to the overlay rather than the desktop. Turn on **Click
+through to the desktop** and every click passes to the desktop instead, so the
+icons keep working with the artwork drawn over them. The overlay is then shown
+and hidden by the toggle hotkey rather than by clicking it, which is the trade
+that setting makes.
+
+Drawing *behind* the icons rather than over them is possible, and two mods in
+this catalog do it, but only by injecting into `explorer.exe` and rendering
+into the window between the wallpaper and the icon view. This mod is built not
+to load into another process at all, so that route is closed to it by design.
+
+The **Display** setting defaults to your primary screen, which is the right
+choice on a single monitor machine; on more than one, point it at whichever
+display you are not working on. Either way the overlay only goes for good when
+you press Esc or toggle it off.
 
 ## Color
 
 Seven palettes: aurora, ember, ocean, neon, forest, mono, and custom, which
 takes its colors from the two custom settings. **Space** steps to the next one
-while the overlay is running, and the one you land on is remembered, so you can
-pick a palette by eye instead of by name. Changing the palette in the settings
-overrides whatever you stepped to, so the setting is never a dead control.
+while the overlay has focus. The one you land on is remembered, so you can
+pick a palette by eye instead of by name. Changing the palette in
+the settings overrides whatever you stepped to, so the setting is never a dead
+control.
 
 **Hue shift** rotates the whole palette by a fixed number of degrees. It is a
 dial across the color wheel rather than a switch: 180 of its 359 degrees lands
@@ -178,6 +204,11 @@ it there is. Amount has five notches: minimal, sparse, balanced, dense, maximal.
 | **Differential growth** | vigor (how hard the colony pushes outward) | number of colonies, 1 through 6 |
 | **Harmonograph** | tempo (how fast the figure is drawn) | number of overlaid figures, 1 through 6 |
 
+On flow field and growth the wheel is a pace control as well as a character
+one: turning turbulence or vigor up draws the piece as much as five times
+faster on its way to the same kind of result. Harmonograph's tempo is only
+speed, and contours is paced by the clock alone.
+
 ![The four styles: flow field, contours, differential growth, harmonograph](https://raw.githubusercontent.com/akilluminati47/vector-screen-holder/main/assets/styles.png)
 
 Left to right: flow field, contours, differential growth, harmonograph.
@@ -202,6 +233,11 @@ are cleared the moment you close it.
 It does **not** fake keystrokes or mouse movement. Some corporate presence
 tools (Teams, Slack) track real input rather than display state and will still
 mark you away.
+
+The overlay is an ordinary window, so it belongs to the virtual desktop it was
+opened on. Switch desktops and it goes with the rest of them; the screen is
+still held awake, you just will not see the art until you switch back. Windows
+offers no supported way to pin a window across desktops.
 
 For the same reason it will not hold a managed workstation open. Suppressing
 the screen saver also suppresses the lock that rides on it, which covers the
@@ -236,9 +272,15 @@ want the mod further out of the way of a long job:
 - step the **amount** down a notch or two with right click.
 - prefer flow field or harmonograph over contours.
 
-Nothing is simulated at all while the overlay is genuinely occluded, and on
-more than one display the overlays are presented without waiting on vsync, so
-they do not divide a single refresh between them.
+Nothing is simulated at all while the overlay is genuinely occluded. That is
+narrower than it sounds: with desktop composition on, which is always on these
+days, an ordinary maximized window over the overlay is still composited and
+does not count. What does count is the workstation locked, or a fullscreen
+exclusive window on that display.
+
+On more than one display the overlays are presented without waiting on vsync,
+so they do not divide a single refresh between them. The cost is some tearing
+in the artwork, which single display users do not get.
 
 ## Source and credits
 
@@ -556,9 +598,10 @@ published at
   $name:ar: لغة السطر المعروض
   $name:he: שפת השורה המוצגת
   $description: >-
-    Language for the line the overlay draws when you change something, and for
-    this settings page. Automatic follows the Windows display language and
-    falls back to English when that language is not one of the ones listed.
+    Language for the line the overlay draws when you change something.
+    Automatic follows the Windows display language and falls back to English
+    when that language is not one of the ones listed. This page itself follows
+    Windhawk's own language setting, not this one.
   $options:
   - auto: Automatic (match Windows)
   - en: English
@@ -1417,30 +1460,69 @@ published at
   $name:ar: العتامة (%)
   $name:he: אטימות (%)
   $description: Below 100 the desktop shows through the overlay. Clamped to 10-100.
-- globalKeys: false
-  $name: Global Esc and Space
-  $name:es-ES: Esc y Espacio globales
-  $name:pt-BR: Esc e Espaço globais
-  $name:fr-FR: Échap et Espace globaux
-  $name:de-DE: Esc und Leertaste global
-  $name:it-IT: Esc e Spazio globali
-  $name:nl-NL: Esc en spatie overal
-  $name:pl-PL: Globalne Esc i spacja
-  $name:tr-TR: Genel Esc ve Boşluk
-  $name:ru-RU: Глобальные Esc и пробел
-  $name:uk-UA: Глобальні Esc і пробіл
-  $name:zh-CN: 全局 Esc 和空格
-  $name:zh-TW: 全域 Esc 與空白鍵
-  $name:ja-JP: Esc とスペースを全体で有効
-  $name:ko-KR: 전역 Esc 및 스페이스
-  $name:ar: Esc والمسافة بشكل عام
-  $name:he: Esc ורווח גלובליים
+- clickThrough: false
+  $name: Click through to the desktop
+  $name:es-ES: Clics hacia el escritorio
+  $name:pt-BR: Cliques passam para a área de trabalho
+  $name:fr-FR: Clics traversants vers le bureau
+  $name:de-DE: Klicks zum Desktop durchlassen
+  $name:it-IT: Clic trasparenti verso il desktop
+  $name:nl-NL: Klikken doorlaten naar bureaublad
+  $name:pl-PL: Przepuszczaj kliknięcia na pulpit
+  $name:tr-TR: Tıklamalar masaüstüne geçsin
+  $name:ru-RU: Пропускать клики на рабочий стол
+  $name:uk-UA: Пропускати кліки на робочий стіл
+  $name:zh-CN: 鼠标点击穿透到桌面
+  $name:zh-TW: 滑鼠點擊穿透至桌面
+  $name:ja-JP: クリックをデスクトップに透過
+  $name:ko-KR: 클릭을 바탕 화면으로 통과
+  $name:ar: تمرير النقرات إلى سطح المكتب
+  $name:he: העברת לחיצות לשולחן העבודה
   $description: >-
-    Let Esc close the overlay and Space change the palette from any application,
-    not just when the overlay has focus. Off by default: Esc is a heavily used
-    key, and a reflexive press in another window would end the session and
-    release the keep-awake without any visible sign. The toggle hotkey above
-    always works regardless of this setting.
+    Pass every click straight through to the desktop, so the icons under the
+    overlay stay usable. Worth turning on if you run the overlay on your only
+    display. The trade is that the overlay can no longer be clicked, scrolled
+    or typed at, so it runs entirely on what you set here: the palette, the
+    amount and the wheel parameter come from the settings above, and the style
+    is whichever one you last left it on, or the rotation if you have it on.
+    To pin it to one style, leave only that style ticked in the four style
+    settings above.
+
+    Esc at the overlay stops working as well, for the same reason: the window
+    never takes focus, so the key never reaches it. That leaves the toggle
+    hotkey above, which always works, and Global Esc directly below, which is
+    worth turning on if you want Esc to keep closing the overlay while this is
+    on.
+- globalKeys: false
+  $name: Global Esc
+  $name:es-ES: Esc global
+  $name:pt-BR: Esc global
+  $name:fr-FR: Échap global
+  $name:de-DE: Esc global
+  $name:it-IT: Esc globale
+  $name:nl-NL: Esc overal
+  $name:pl-PL: Globalny Esc
+  $name:tr-TR: Genel Esc
+  $name:ru-RU: Глобальный Esc
+  $name:uk-UA: Глобальний Esc
+  $name:zh-CN: 全局 Esc
+  $name:zh-TW: 全域 Esc
+  $name:ja-JP: Esc を全体で有効
+  $name:ko-KR: 전역 Esc
+  $name:ar: Esc بشكل عام
+  $name:he: Esc גלובלי
+  $description: >-
+    Let Esc close the overlay from any application, not just when the overlay
+    has focus. Off by default because Esc is a heavily used key, and a
+    reflexive press meant for a dialog in another window would end the session
+    and release the keep-awake without any visible sign. Nothing else is
+    watched globally, and the key is never swallowed, so the application you
+    are in still sees it. The toggle hotkey above always works regardless of
+    this setting.
+
+    With Click through to the desktop on, this is the only way to close the
+    overlay with a key other than the hotkey, because the overlay never takes
+    focus in that mode and so never sees Esc itself.
 - keepAwake: true
   $name: Keep the PC awake
   $name:es-ES: Mantener el PC despierto
@@ -1511,7 +1593,6 @@ published at
 
 #include <windows.h>
 #include <d2d1.h>
-#include <dwrite.h>
 #include <dwrite_3.h>
 #include <windhawk_utils.h>
 #include <sddl.h>
@@ -1525,6 +1606,7 @@ published at
 #include <cwchar>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 // ---------------------------------------------------------------------------
@@ -1551,13 +1633,6 @@ static const WCHAR kWindowClass[] = L"WindhawkVectorScreenHolderWnd";
 
 // The mod's own image, which owns the window class and the window procedure.
 static HINSTANCE g_modInstance = nullptr;
-
-// True only once SetWindowsHookEx has actually returned a hook. The window
-// proc uses it to stay off keys the hook has already handled, so it has to
-// follow the hook itself: gating on the setting, or on the hook thread merely
-// starting, would leave the key dead in both places whenever the hook failed
-// to install.
-static std::atomic<bool> g_kbdHookLive{false};
 
 // Set when more than one display is being driven. The worker renders the
 // overlays one after another inside a single loop iteration, and a vsynced
@@ -1810,6 +1885,11 @@ static const Strings* StringsFromSystem() {
     return nullptr;
 }
 
+// Kept in preference to std::clamp, which returns a reference to one of its
+// arguments, so the result must never be bound to one: with a temporary
+// argument, const auto& r = std::clamp(x + 1, 0, 9) dangles. Assigning by
+// value is perfectly safe there, so this is a preference rather than a fix;
+// returning by value just removes the trap.
 template <typename T>
 static T ClampT(T v, T lo, T hi) {
     return v < lo ? lo : (v > hi ? hi : v);
@@ -1836,7 +1916,9 @@ struct Rng {
         if (b <= a) {
             return a;
         }
-        return a + (int)(Next() * (float)(b - a + 1)) % (b - a + 1);
+        // Next() is strictly below 1, so the cast already lands in [0, b-a]
+        // and the modulo this used to carry never had anything to do.
+        return a + (int)(Next() * (float)(b - a + 1));
     }
     float Sign() { return Next() < 0.5f ? -1.0f : 1.0f; }
 };
@@ -2483,7 +2565,9 @@ class ContourScene : public Scene {
     // the difference between about 830k cell tests per frame and roughly one
     // pass over the grid. The output is identical.
     void MarchAll() {
-        if ((int)segsByLevel_.size() < levels_) {
+        if ((int)segsByLevel_.size() != levels_) {
+            // Not just grow: stepping the amount back down used to leave this
+            // at the largest it had ever been for the life of the scene.
             segsByLevel_.resize(levels_);
         }
         for (int k = 0; k < levels_; k++) {
@@ -2777,7 +2861,9 @@ class GrowthScene : public Scene {
             }
         }
 
-        if (Total() < maxNodes_) {
+        // total, from the top of this step: nothing between there and here
+        // adds or removes a node, and Total() is a walk of every loop.
+        if (total < maxNodes_) {
             int grew = 0;
             for (size_t li = 0; li < loops_.size(); li++) {
                 std::vector<Node>& N = loops_[li].nodes;
@@ -3006,6 +3092,7 @@ struct Settings {
     int fps = 60;
     int opacity = 100;
     bool globalKeys = false;
+    bool clickThrough = false;
     bool keepAwake = true;
     bool startActive = false;
     bool workAreaOnly = false;
@@ -3070,7 +3157,7 @@ static void BuildPalette() {
     const Preset& chosen = kPresets[ClampT(g_paletteIndex, 0, kPaletteCount - 1)];
     g_palette.ink.clear();
 
-    if (std::wstring(chosen.name) == L"custom") {
+    if (wcscmp(chosen.name, L"custom") == 0) {
         g_palette.bg = RgbFromHex(g_settings.customBackground.empty()
                                       ? 0x05070d
                                       : ParseHex(g_settings.customBackground));
@@ -3889,6 +3976,7 @@ class Overlay {
     void Render(float dtSec);
     void NewScene();
     bool Occluded() const { return occluded_; }
+    const RECT& Rect() const { return rect_; }
     // Briefly show what just changed. The overlay is otherwise completely
     // clean, and this is the only text it ever draws.
     void FlashHud();
@@ -3941,6 +4029,7 @@ class Overlay {
     float hudT_ = 0;
     float hudPx_ = 15.0f;
     float hudMarginX_ = 24.0f;
+    float retryWait_ = 0.0f;
     bool hudCrisp_ = false;
     bool focusClickArmed_ = false;
     bool reportOnUp_ = false;
@@ -3957,15 +4046,31 @@ static void Controller_StepAmount(Overlay* ov);
 static void Controller_Wheel(Overlay* ov, int delta);
 static void Controller_RequestRebuild();
 static void Controller_RequestClose();
-static void Controller_RequestPalette();
 static void Controller_CyclePalette();
 
 bool Overlay::Create() {
     // Bottom of the z-order: it sits above the wallpaper but under every
     // application window. Focusable on click so keyboard input reaches it, but
     // it is never raised.
+    //
+    // WS_EX_TRANSPARENT hands every click straight through to whatever is
+    // below, which at the bottom of the z-order is the desktop, so the icons
+    // the overlay is drawn over stay usable. WS_EX_NOACTIVATE goes with it:
+    // there is no point taking the focus for keys that can no longer be aimed
+    // at the window. The overlay is then driven by the toggle hotkey and, if
+    // it is on, the global key, which is what the setting says.
+    //
+    // WS_EX_LAYERED has to travel with them. Measured, not assumed: with
+    // WS_EX_TRANSPARENT alone a synthetic click still landed on the upper
+    // window, and only with both styles did it reach the one underneath. The
+    // pass through lives in the layered composition path, so at full opacity
+    // this is a layered window at alpha 255 rather than a plain one.
+    DWORD exStyle = WS_EX_TOOLWINDOW;
+    if (g_settings.clickThrough) {
+        exStyle |= WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE;
+    }
     hwnd_ = CreateWindowExW(
-        WS_EX_TOOLWINDOW, kWindowClass, L"",
+        exStyle, kWindowClass, L"",
         WS_POPUP, rect_.left, rect_.top, rect_.right - rect_.left,
         rect_.bottom - rect_.top, nullptr, nullptr,
         g_modInstance, nullptr);
@@ -3975,10 +4080,15 @@ bool Overlay::Create() {
     }
     SetWindowLongPtrW(hwnd_, GWLP_USERDATA, (LONG_PTR)this);
 
-    if (g_settings.opacity < 100) {
+    // Verified rather than assumed: a WS_EX_LAYERED window that an
+    // ID2D1HwndRenderTarget presents to does honour the constant alpha on
+    // Windows 11, so this is a live control and not a dead one.
+    if (g_settings.opacity < 100 || g_settings.clickThrough) {
         SetWindowLongPtrW(hwnd_, GWL_EXSTYLE,
                           GetWindowLongPtrW(hwnd_, GWL_EXSTYLE) |
                               WS_EX_LAYERED);
+        // 255 at full opacity, which is what a click through window at 100
+        // gets: layered for the hit testing, unchanged on screen.
         BYTE a = (BYTE)(255 * g_settings.opacity / 100);
         SetLayeredWindowAttributes(hwnd_, 0, a, LWA_ALPHA);
     }
@@ -4272,9 +4382,19 @@ static float EaseInOut(float t) {
 
 void Overlay::Render(float dtSec) {
     if (!rt_ || !buf_ || !brush_) {
-        if (!CreateDeviceResources()) {
+        // A driver reset or a remote session detaching can leave the device
+        // unavailable for a long time, and retrying every frame means sixty
+        // failed CreateHwndRenderTarget calls a second per display for the
+        // whole outage. Once it has failed, try roughly twice a second.
+        if (retryWait_ > 0.0f) {
+            retryWait_ -= dtSec;
             return;
         }
+        if (!CreateDeviceResources()) {
+            retryWait_ = 0.5f;
+            return;
+        }
+        retryWait_ = 0.0f;
         // The accumulation buffer went with the device while the scene kept
         // its progress, so resuming would paint only the strokes that were
         // still to come onto an empty buffer. Start the piece again. This is
@@ -4537,13 +4657,15 @@ LRESULT CALLBACK Overlay::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             }
             if (wp == VK_SPACE) {
                 // bit 30 is the previous key state: ignore auto-repeat so a
-                // held Space does not race through every palette.
-                //
-                // With Global Esc and Space on, the hook has already handled
-                // this press and the key reaches the focused overlay as well,
-                // which would step the palette twice for one press.
-                if (!(lp & (1 << 30)) && !g_kbdHookLive) {
-                    Controller_RequestPalette();
+                // held Space does not race through every palette. The global
+                // hook no longer touches Space, so this is the only path that
+                // handles it and there is nothing to exclude.
+                if (!(lp & (1 << 30))) {
+                    // Straight through, not posted. This window procedure
+                    // already runs on the worker thread, off the same message
+                    // loop that would have serviced the post, so bouncing a
+                    // message off ourselves only delayed it by an iteration.
+                    Controller_CyclePalette();
                 }
                 return 0;
             }
@@ -4574,8 +4696,18 @@ LRESULT CALLBACK Overlay::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 static std::vector<Overlay*> g_overlays;
 static std::atomic<bool> g_active{false};
 static HANDLE g_toggleEvent = nullptr;
+
+// Teardown cannot depend on a message arriving. PostThreadMessage fails once a
+// thread queue is full, and the worker's wait is INFINITE whenever the overlay
+// is hidden, so a failed post would leave Wh_ModUninit joining a thread that
+// nothing will ever wake. This event sits in the same wait set and setting it
+// cannot fail.
+static HANDLE g_quitEvent = nullptr;
 static std::atomic<DWORD> g_workerThreadId{0};
-static HHOOK g_kbdHook = nullptr;
+// The HHOOK deliberately does not live here. Bounding the join means a thread
+// can in principle be abandoned, and a straggler that still owned this global
+// would unhook whatever hook the next one had installed. It is a local in
+// KbdHookThread instead, so an abandoned thread can only ever unhook its own.
 static bool g_hotkeyRegistered = false;
 static float g_rotateTimer = 0;
 // True only while every overlay reports itself hidden, which drops the loop to
@@ -4587,7 +4719,6 @@ static const UINT WM_VSH_QUIT = WM_APP + 2;
 
 static const UINT WM_VSH_CLOSE = WM_APP + 3;
 static const UINT WM_VSH_REBUILD = WM_APP + 4;
-static const UINT WM_VSH_PALETTE = WM_APP + 5;
 
 static int NextEnabledStyle(int from) {
     for (int i = 1; i <= kStyleCount; i++) {
@@ -4614,29 +4745,63 @@ static int FirstEnabledStyle() {
 static std::atomic<bool> g_stateDirty{false};
 static int g_pendingStyle = 0, g_pendingAmount = 2, g_pendingParam = 500;
 
+// The palette gets its own flag rather than sharing g_stateDirty. The pending
+// style, amount and parameter above start at the hardcoded defaults and are
+// only filled in by SaveState, so a palette step flushing the shared flag
+// would write those defaults over whatever the user had actually set.
+static std::atomic<bool> g_paletteDirty{false};
+static int g_pendingPalette = 0, g_pendingPaletteFrom = 0;
+
+// Seconds since the last change, counted only while something is unsaved. The
+// flush used to happen on hide alone, so a sign-out or a reboot that took the
+// process down without an unload lost whatever style, amount and parameter the
+// user had settled on, which is the opposite of what the readme promises about
+// the one you land on being remembered. Waiting out a short quiet period keeps
+// this to one write per burst of adjustment instead of one per wheel notch.
+static float g_stateQuiet = 0;
+static const float kStateFlushDelay = 2.0f;
+
 static void SaveState(const Overlay* ov) {
     g_pendingStyle = ov->style;
     g_pendingAmount = ov->amount;
     g_pendingParam = (int)(ov->param * 1000.0f);
     g_stateDirty = true;
+    g_stateQuiet = 0;   // each change restarts the quiet period
+}
+
+static void SavePalette(int index, int from) {
+    g_pendingPalette = index;
+    g_pendingPaletteFrom = from;
+    g_paletteDirty = true;
+    g_stateQuiet = 0;
+}
+
+static bool StatePending() {
+    return g_stateDirty || g_paletteDirty;
 }
 
 static void FlushState() {
-    if (!g_stateDirty.exchange(false)) {
-        return;
+    if (g_stateDirty.exchange(false)) {
+        Wh_SetIntValue(L"state.style", g_pendingStyle);
+        Wh_SetIntValue(L"state.amount", g_pendingAmount);
+        Wh_SetIntValue(L"state.param", g_pendingParam);
+        // Stamp which setting values this state was derived from.
+        Wh_SetIntValue(L"state.amountFrom", g_settings.amount);
+        Wh_SetIntValue(L"state.paramFrom", g_settings.parameter);
     }
-    Wh_SetIntValue(L"state.style", g_pendingStyle);
-    Wh_SetIntValue(L"state.amount", g_pendingAmount);
-    Wh_SetIntValue(L"state.param", g_pendingParam);
-    // Stamp which setting values this state was derived from.
-    Wh_SetIntValue(L"state.amountFrom", g_settings.amount);
-    Wh_SetIntValue(L"state.paramFrom", g_settings.parameter);
+    if (g_paletteDirty.exchange(false)) {
+        Wh_SetIntValue(L"state.palette", g_pendingPalette);
+        Wh_SetIntValue(L"state.paletteFrom", g_pendingPaletteFrom);
+    }
 }
 
 // Clicks fan out to every overlay, the way the rotation timer already does,
 // so multiple displays stay in step instead of drifting apart.
 static void Controller_CycleStyle(Overlay* ov) {
     int next = NextEnabledStyle(ov->style);
+    // Choosing a style by hand restarts the rotation clock, so a click that
+    // lands near the end of an interval is not rotated away a moment later.
+    g_rotateTimer = 0;
     for (size_t i = 0; i < g_overlays.size(); i++) {
         g_overlays[i]->style = next;
         g_overlays[i]->NewScene();
@@ -4682,9 +4847,10 @@ static void Controller_Wheel(Overlay* ov, int delta) {
 static void Controller_CyclePalette() {
     g_paletteIndex = (g_paletteIndex + 1) % kPaletteCount;
     BuildPalette();
-    Wh_SetIntValue(L"state.palette", g_paletteIndex);
-    Wh_SetIntValue(L"state.paletteFrom",
-                   PaletteIndexFromName(g_settings.palette));
+    // Deferred, the way a wheel notch is. Stepped quickly this used to be two
+    // writes per press going straight to the store, which is the sort of thing
+    // that has no business happening several times a second.
+    SavePalette(g_paletteIndex, PaletteIndexFromName(g_settings.palette));
     for (size_t i = 0; i < g_overlays.size(); i++) {
         g_overlays[i]->FlashHud();
     }
@@ -4692,19 +4858,13 @@ static void Controller_CyclePalette() {
 
 
 
-// The low level keyboard hook cannot call Controller_CyclePalette itself.
-// BuildPalette clears and refills g_palette while the worker thread is inside
-// Render reading it, g_overlays is owned by the worker, and a hook callback
-// holds up every keystroke on the system until it returns, with Windows
-// silently dropping the hook past LowLevelHooksTimeout. So the hook posts and
-// the worker does the work, the same way Esc already does.
-static void Controller_RequestPalette() {
-    DWORD tid = g_workerThreadId.load();
-    if (tid && !PostThreadMessageW(tid, WM_VSH_PALETTE, 0, 0)) {
-        Wh_Log(L"PostThreadMessage(PALETTE) failed (%u)", GetLastError());
-    }
-}
-
+// Esc still has to be posted rather than called. This one does come from the
+// hook thread, where calling HideOverlays directly would tear down windows the
+// worker owns from underneath it, and where a hook callback holds up every
+// keystroke on the system until it returns, with Windows silently dropping the
+// hook past LowLevelHooksTimeout. It is also reached from the window procedure,
+// where calling straight through would destroy the very Overlay whose window
+// procedure is on the stack.
 static void Controller_RequestClose() {
     DWORD tid = g_workerThreadId.load();
     if (tid && !PostThreadMessageW(tid, WM_VSH_CLOSE, 0, 0)) {
@@ -4729,32 +4889,27 @@ static void Controller_RequestRebuild() {
     }
 }
 
-// A global low-level keyboard hook so Space and Esc work even when no overlay
-// owns the keyboard focus. It only watches the two keys and never swallows
-// anything, so normal typing is completely unaffected.
-// The hook gets no repeat flag, so the key down is latched here to step once
-// per physical press. It lives outside the callback because the hook can be
-// torn down and reinstalled with the key still held.
-static std::atomic<bool> g_spaceHeld{false};
-
+// A global low-level keyboard hook so Esc can reach the overlay when it does
+// not own the keyboard focus. It watches one key, never swallows it, and does
+// nothing else, so normal typing is completely unaffected.
+//
+// The palette used to be on this hook too, first as plain Space and then as
+// Ctrl+Shift+Space. It is not any more, and the reason is what the setting was
+// asking people to accept. Esc from anywhere is a safety valve: the overlay
+// covers a display, and you should always be able to get rid of it. Stepping
+// the palette from anywhere is a convenience. Bundling them meant nobody could
+// have the safety valve without also taking a key that fires inside Word,
+// Visual Studio and the JetBrains editors. Two different things do not belong
+// behind one checkbox, so the convenience went and the safety valve stayed.
+//
+// The palette is still on Space, on the overlay, where every other control
+// already lives.
 static LRESULT CALLBACK LowLevelKbdProc(int nCode, WPARAM wParam, LPARAM lParam) {
     if (nCode == HC_ACTION && g_active) {
         KBDLLHOOKSTRUCT* k = (KBDLLHOOKSTRUCT*)lParam;
         bool down = wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN;
-        bool up = wParam == WM_KEYUP || wParam == WM_SYSKEYUP;
-        if (k->vkCode == VK_ESCAPE) {
-            if (down) {
-                Controller_RequestClose();
-            }
-        } else if (k->vkCode == VK_SPACE) {
-            // The hook gets no repeat flag, so latch the key down ourselves
-            // and step once per physical press.
-            if (down && !g_spaceHeld) {
-                g_spaceHeld = true;
-                Controller_RequestPalette();
-            } else if (up) {
-                g_spaceHeld = false;
-            }
+        if (k->vkCode == VK_ESCAPE && down) {
+            Controller_RequestClose();
         }
     }
     return CallNextHookEx(nullptr, nCode, wParam, lParam);
@@ -4778,13 +4933,8 @@ static DWORD WINAPI KbdHookThread(LPVOID) {
     GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
                            GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                        (LPCWSTR)&LowLevelKbdProc, &mod);
-    g_kbdHook = SetWindowsHookExW(WH_KEYBOARD_LL, LowLevelKbdProc, mod, 0);
-    // Published here rather than beside CreateThread: the thread starting says
-    // nothing about whether the hook itself took. Setting it early meant that
-    // if this call failed, the window proc would still stand aside for a hook
-    // that was not there, and Space would be dead in both places.
-    g_kbdHookLive = g_kbdHook != nullptr;
-    if (!g_kbdHook) {
+    HHOOK hook = SetWindowsHookExW(WH_KEYBOARD_LL, LowLevelKbdProc, mod, 0);
+    if (!hook) {
         Wh_Log(L"SetWindowsHookEx failed (%u)", GetLastError());
     }
 
@@ -4799,11 +4949,11 @@ static DWORD WINAPI KbdHookThread(LPVOID) {
         DispatchMessageW(&msg);
     }
 
-    if (g_kbdHook) {
-        UnhookWindowsHookEx(g_kbdHook);
-        g_kbdHook = nullptr;
+    if (hook) {
+        UnhookWindowsHookEx(hook);
     }
-    g_hookThreadId = 0;
+    // The thread id is cleared by whoever joined this thread, not here: a
+    // straggler clearing it would zero the id of the thread that replaced it.
     return 0;
 }
 
@@ -4811,9 +4961,6 @@ static void InstallKbdHook() {
     if (g_hookThread) {
         return;
     }
-    // A press held across a hide would otherwise leave this latched, and the
-    // first press after the next show would be swallowed.
-    g_spaceHeld = false;
     g_hookReady = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     if (!g_hookReady) {
         // Without it the uninstall path cannot know when the id is published,
@@ -4833,7 +4980,6 @@ static void InstallKbdHook() {
 }
 
 static void UninstallKbdHook() {
-    g_kbdHookLive = false;
     if (!g_hookThread) {
         return;
     }
@@ -4846,12 +4992,26 @@ static void UninstallKbdHook() {
         Wh_Log(L"PostThreadMessage to the hook thread failed (%u)",
                GetLastError());
     }
-    // No timeout: abandoning the thread would leave the hook installed with
-    // g_hookThread nulled, so the next show would install a second one. Its
-    // remaining work is just UnhookWindowsHookEx and return.
-    WaitForSingleObject(g_hookThread, INFINITE);
+    // Bounded on purpose. Abandoning the thread leaves the hook installed, so
+    // the wait is generous; but waiting forever on a post that may have failed
+    // would hang the unload, and a hung unload takes Windhawk with it. Its
+    // remaining work is only UnhookWindowsHookEx and a return, so five seconds
+    // is far more than it can honestly need.
+    if (WaitForSingleObject(g_hookThread, 5000) != WAIT_OBJECT_0) {
+        // Deliberately leave g_hookThread set. Clearing it would let the next
+        // InstallKbdHook start a second thread and a second WH_KEYBOARD_LL
+        // hook while this one's is still live, leaking the first and posting
+        // two closes for every Esc. HideOverlays tolerates the second post,
+        // but the leaked hook sits on every keystroke in the session for
+        // nothing. Refusing to install another is the safe failure, and
+        // global Esc is the only thing lost until the process restarts.
+        Wh_Log(L"Keyboard hook thread did not exit in time; leaving it in "
+               L"place, global keys stay off for this session");
+        return;
+    }
     CloseHandle(g_hookThread);
     g_hookThread = nullptr;
+    g_hookThreadId = 0;
     if (g_hookReady) {
         CloseHandle(g_hookReady);
         g_hookReady = nullptr;
@@ -4869,36 +5029,57 @@ static void ApplyExecutionState() {
 
 static ID2D1Factory* g_factory = nullptr;
 
-static void ShowOverlays() {
-    if (g_active) {
-        return;
+// The Display setting tells people to identify their screens from this list,
+// so it is written at startup and again whenever the layout changes.
+static void LogDisplays() {
+    std::vector<MonitorEntry> mons = EnumerateMonitors();
+    for (size_t i = 0; i < mons.size(); i++) {
+        Wh_Log(L"Windows display %d: %s [%s], %dx%d at (%d,%d)%s",
+               mons[i].winNum,
+               mons[i].deviceName.empty() ? L"Unknown" : mons[i].deviceName.c_str(),
+               mons[i].device.c_str(),
+               (int)(mons[i].rect.right - mons[i].rect.left),
+               (int)(mons[i].rect.bottom - mons[i].rect.top),
+               (int)mons[i].rect.left, (int)mons[i].rect.top,
+               mons[i].primary ? L" [primary]" : L"");
     }
-    if (!g_factory) {
-        D2D1_FACTORY_OPTIONS opts;
-        ZeroMemory(&opts, sizeof(opts));
-        if (FAILED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED,
-                                     kIID_ID2D1Factory, &opts,
-                                     (void**)&g_factory))) {
-            Wh_Log(L"D2D1CreateFactory failed");
-            return;
-        }
-    }
-    if (!g_dwrite) {
-        // Optional: without it the art still runs, just with no readout.
-        if (FAILED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,
-                                       kIID_IDWriteFactory,
-                                       (IUnknown**)&g_dwrite))) {
-            Wh_Log(L"DWriteCreateFactory failed; readout disabled");
-            g_dwrite = nullptr;
-        }
-    }
+}
 
+// Which rectangles the overlay should cover, given the current settings and
+// the displays actually attached. Pulled out of ShowOverlays so the rebuild
+// path can ask the question without tearing anything down to find out.
+static std::vector<RECT> ComputeTargetRects() {
+    std::vector<RECT> targets;
     std::vector<MonitorEntry> mons = EnumerateMonitors();
     if (mons.empty()) {
-        return;
+        return targets;
     }
 
-    std::vector<RECT> targets;
+    // The plain rectangle, with nothing shaved off it.
+    //
+    // There used to be a pixel taken off the bottom edge here, to keep the
+    // overlay from being counted as a fullscreen application: the shell looks
+    // for a window that covers the monitor and Focus Assist silences
+    // notifications when it finds one, so a clicked overlay could have turned
+    // the user's notifications off without saying so.
+    //
+    // It turns out this overlay was never in that category, and the pixel was
+    // bought for nothing. Measured on Windows 11, three runs of each, a
+    // WS_POPUP tool window covering the primary monitor and holding the
+    // foreground:
+    //
+    //   normal z-order                      QUNS_BUSY
+    //   forced to HWND_BOTTOM every
+    //   WM_WINDOWPOSCHANGING, as here       QUNS_ACCEPTS_NOTIFICATIONS
+    //
+    // The earlier measurements that argued for the trim were all taken on a
+    // window at normal z-order, which this one never is: WM_WINDOWPOSCHANGING
+    // rewrites hwndInsertAfter to HWND_BOTTOM on every single position change,
+    // so the overlay sits under every application window for its whole life,
+    // foreground or not. The shell does not treat that as a fullscreen app.
+    //
+    // Which is worth knowing before anyone adds the pixel back: it costs a
+    // line of wallpaper across the artwork, and it defends against nothing.
     auto targetRect = [&](const MonitorEntry& m) -> RECT {
         return g_settings.workAreaOnly ? m.work : m.rect;
     };
@@ -4937,6 +5118,59 @@ static void ShowOverlays() {
                 targets.push_back(targetRect(mons[0]));
             }
         }
+    }
+    return targets;
+}
+
+// What the overlays are covering right now.
+static std::vector<RECT> CurrentOverlayRects() {
+    std::vector<RECT> rects;
+    for (size_t i = 0; i < g_overlays.size(); i++) {
+        rects.push_back(g_overlays[i]->Rect());
+    }
+    return rects;
+}
+
+static bool SameRects(const std::vector<RECT>& a, const std::vector<RECT>& b) {
+    if (a.size() != b.size()) {
+        return false;
+    }
+    for (size_t i = 0; i < a.size(); i++) {
+        if (a[i].left != b[i].left || a[i].top != b[i].top ||
+            a[i].right != b[i].right || a[i].bottom != b[i].bottom) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void ShowOverlays() {
+    if (g_active) {
+        return;
+    }
+    if (!g_factory) {
+        D2D1_FACTORY_OPTIONS opts;
+        ZeroMemory(&opts, sizeof(opts));
+        if (FAILED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED,
+                                     kIID_ID2D1Factory, &opts,
+                                     (void**)&g_factory))) {
+            Wh_Log(L"D2D1CreateFactory failed");
+            return;
+        }
+    }
+    if (!g_dwrite) {
+        // Optional: without it the art still runs, just with no readout.
+        if (FAILED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,
+                                       kIID_IDWriteFactory,
+                                       (IUnknown**)&g_dwrite))) {
+            Wh_Log(L"DWriteCreateFactory failed; readout disabled");
+            g_dwrite = nullptr;
+        }
+    }
+
+    std::vector<RECT> targets = ComputeTargetRects();
+    if (targets.empty()) {
+        return;
     }
 
     g_presentImmediately = targets.size() > 1;
@@ -4990,6 +5224,10 @@ static void ShowOverlays() {
     }
     g_active = true;
     g_rotateTimer = 0;
+    // Left set by a session that ended while something covered the overlay,
+    // this would start the next one on the half second poll with its rotation
+    // frozen, until the first render cleared it.
+    g_allOccluded = false;
     if (g_settings.globalKeys) {
         InstallKbdHook();
     }
@@ -5083,8 +5321,9 @@ static bool ParseHotkey(const std::wstring& s, UINT* mods, UINT* vk) {
     // that letter everywhere, all session, with nothing on screen to say why.
     // Function keys are a fair thing to take bare; letters and digits are not.
     if (m == 0 && !(key >= VK_F1 && key <= VK_F24)) {
-        Wh_Log(L"Hotkey '%s' has no modifier; letters and digits need one",
-               s.c_str());
+        // The caller reports the failure, with the rule, for every way of
+        // getting here. Logging it again from the parser was the same line
+        // twice for one bad string.
         return false;
     }
     *mods = m | MOD_NOREPEAT;
@@ -5172,6 +5411,7 @@ static void LoadSettings() {
     g_settings.fps = ClampT(Wh_GetIntSetting(L"fps"), 10, 240);
     g_settings.opacity = ClampT(Wh_GetIntSetting(L"opacity"), 10, 100);
     g_settings.globalKeys = Wh_GetIntSetting(L"globalKeys") != 0;
+    g_settings.clickThrough = Wh_GetIntSetting(L"clickThrough") != 0;
     g_settings.keepAwake = Wh_GetIntSetting(L"keepAwake") != 0;
     g_settings.startActive = Wh_GetIntSetting(L"startActive") != 0;
     g_settings.workAreaOnly = Wh_GetIntSetting(L"workAreaOnly") != 0;
@@ -5199,7 +5439,9 @@ static void RegisterHotkeyFromSettings() {
     } else if (!g_settings.hotkey.empty()) {
         // An empty value is the documented way to turn the hotkey off, so
         // only a non-empty string that will not parse is worth reporting.
-        Wh_Log(L"Could not parse the hotkey '%s'; no hotkey is registered",
+        Wh_Log(L"Could not parse the hotkey '%s'; no hotkey is registered. "
+               L"Letters and digits need a modifier such as Ctrl or Alt; "
+               L"function keys can stand on their own",
                g_settings.hotkey.c_str());
     }
 }
@@ -5253,17 +5495,7 @@ static DWORD WINAPI WorkerThread(LPVOID) {
 
     LoadSettings();
 
-    std::vector<MonitorEntry> mons = EnumerateMonitors();
-    for (size_t i = 0; i < mons.size(); i++) {
-        Wh_Log(L"Windows display %d: %s [%s], %dx%d at (%d,%d)%s",
-               mons[i].winNum,
-               mons[i].deviceName.empty() ? L"Unknown" : mons[i].deviceName.c_str(),
-               mons[i].device.c_str(),
-               (int)(mons[i].rect.right - mons[i].rect.left),
-               (int)(mons[i].rect.bottom - mons[i].rect.top),
-               (int)mons[i].rect.left, (int)mons[i].rect.top,
-               mons[i].primary ? L" [primary]" : L"");
-    }
+    LogDisplays();
 
     g_toggleEvent = CreateToggleEvent();
     if (!g_toggleEvent) {
@@ -5294,9 +5526,12 @@ static DWORD WINAPI WorkerThread(LPVOID) {
     }
 
     while (g_running) {
-        HANDLE handles[2];
+        HANDLE handles[3];
         DWORD count = 0;
         DWORD toggleIdx = (DWORD)-1;
+        if (g_quitEvent) {
+            handles[count++] = g_quitEvent;   // wakes the wait, nothing more
+        }
         if (g_toggleEvent) {
             toggleIdx = count;
             handles[count++] = g_toggleEvent;
@@ -5347,10 +5582,16 @@ static DWORD WINAPI WorkerThread(LPVOID) {
                 }
                 if (msg.message == WM_VSH_SETTINGS) {
                     bool wasActive = g_active;
+                    bool hadStartActive = g_settings.startActive;
                     HideOverlays();
                     LoadSettings();
                     RegisterHotkeyFromSettings();
-                    if (wasActive || g_settings.startActive) {
+                    // Whatever the user left on screen is what they get back.
+                    // Carrying startActive into every settings change meant
+                    // dismissing the overlay with Esc and then editing an
+                    // unrelated setting brought it back. Ticking the box
+                    // itself is the one case that should still open it.
+                    if (wasActive || (g_settings.startActive && !hadStartActive)) {
                         ShowOverlays();
                     }
                     continue;
@@ -5363,18 +5604,30 @@ static DWORD WINAPI WorkerThread(LPVOID) {
                     HideOverlays();
                     continue;
                 }
-                if (msg.message == WM_VSH_PALETTE) {
-                    Controller_CyclePalette();
-                    continue;
-                }
                 if (msg.message == WM_VSH_REBUILD) {
                     g_rebuildQueued = false;
                     // Displays added, removed or resized. Rebuild so the
                     // overlay follows the new geometry rather than sitting at
                     // the old size on a display that may no longer exist.
+                    //
+                    // Only when something actually moved, though. A DPI change
+                    // cannot move these rectangles at all, because the worker
+                    // is per-monitor aware and the targets are already
+                    // physical pixels; nor can a monitor waking, a game
+                    // switching mode and back, or a taskbar toggle with the
+                    // work area unused. This runs for hours, so a piece
+                    // restarting for no visible reason is exactly what gets
+                    // noticed.
                     if (g_active) {
-                        HideOverlays();
-                        ShowOverlays();
+                        // Re-logged because the Display setting tells people
+                        // to identify their screens from this list, which is
+                        // no help if it only ever describes the old layout.
+                        LogDisplays();
+                        if (!SameRects(ComputeTargetRects(),
+                                       CurrentOverlayRects())) {
+                            HideOverlays();
+                            ShowOverlays();
+                        }
                     }
                     continue;
                 }
@@ -5407,6 +5660,13 @@ static DWORD WINAPI WorkerThread(LPVOID) {
         lastRender = now;
         float dt = since > 0.25f ? 0.25f : since;
 
+        if (StatePending()) {
+            g_stateQuiet += dt;
+            if (g_stateQuiet >= kStateFlushDelay) {
+                FlushState();
+            }
+        }
+
         // hue
         if (g_settings.colorRamp) {
             g_hue += (float)g_settings.rampSpeed * dt;
@@ -5420,7 +5680,10 @@ static DWORD WINAPI WorkerThread(LPVOID) {
             g_hue = (float)g_settings.hueOffset;
         }
 
-        if (g_settings.rotate) {
+        // Frozen with everything else while nobody can see the display: this
+        // clock used to keep running and build whole new scenes, contour
+        // fields included, behind a fullscreen window.
+        if (g_settings.rotate && !g_allOccluded) {
             g_rotateTimer += dt;
             if (g_rotateTimer >= (float)g_settings.rotateSeconds) {
                 g_rotateTimer = 0;
@@ -5476,6 +5739,12 @@ static HANDLE g_workerThread = nullptr;
 BOOL WhTool_ModInit() {
     Wh_Log(L"Vector Screen Holder starting");
     g_running = true;
+    g_quitEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    if (!g_quitEvent) {
+        // Not fatal: the quit message is still posted below, this only removes
+        // the fallback if that post ever fails.
+        Wh_Log(L"CreateEvent for quit failed (%u)", GetLastError());
+    }
     g_workerThread = CreateThread(nullptr, 0, WorkerThread, nullptr, 0, nullptr);
     if (!g_workerThread) {
         Wh_Log(L"CreateThread failed");
@@ -5493,6 +5762,11 @@ void WhTool_ModSettingsChanged() {
 
 void WhTool_ModUninit() {
     g_running = false;
+    // The event first, because it cannot fail. The message is only for
+    // promptness: it wakes the wait the same way but also drains cleanly.
+    if (g_quitEvent) {
+        SetEvent(g_quitEvent);
+    }
     DWORD tid = g_workerThreadId.load();
     if (tid && !PostThreadMessageW(tid, WM_VSH_QUIT, 0, 0)) {
         Wh_Log(L"PostThreadMessage(QUIT) failed (%u)", GetLastError());
@@ -5505,6 +5779,10 @@ void WhTool_ModUninit() {
         WaitForSingleObject(g_workerThread, INFINITE);
         CloseHandle(g_workerThread);
         g_workerThread = nullptr;
+    }
+    if (g_quitEvent) {
+        CloseHandle(g_quitEvent);
+        g_quitEvent = nullptr;
     }
 }
 
