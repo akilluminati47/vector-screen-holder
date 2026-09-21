@@ -34,7 +34,7 @@
 // @description:ko-KR 선택한 디스플레이를 제너러티브 라인 아트로 채우고 실행 중에는 PC가 유휴 상태로 전환되지 않도록 합니다
 // @description:ar   يملأ الشاشة التي تختارها بفن خطي توليدي ويمنع الكمبيوتر من الخمول أثناء تشغيله
 // @description:he   ממלא מסך לבחירתך באמנות קווית גנרטיבית ומונע מהמחשב לעבור למצב סרק בזמן שהוא פועל
-// @version         1.4.4
+// @version         1.5.1
 // @author          akilluminati47
 // @github          https://github.com/akilluminati47
 // @homepage        https://vector.akilluminati47.pages.dev/
@@ -1596,6 +1596,7 @@ published at
 #include <dwrite_3.h>
 #include <windhawk_utils.h>
 #include <sddl.h>
+#include <shlobj.h>
 
 #include <algorithm>
 #include <atomic>
@@ -3153,6 +3154,21 @@ static int PaletteIndexFromName(const std::wstring& name) {
     return 0;
 }
 
+// A stamp of the two custom colour settings, so a change to either can be
+// noticed across a restart. FNV-1a, which is plenty for telling "these are the
+// same two strings" from "these are not", and stays positive so that -1 can
+// mean nothing was ever stored.
+static int CustomColorStamp() {
+    unsigned h = 2166136261u;
+    const std::wstring both =
+        g_settings.customColors + L'\n' + g_settings.customBackground;
+    for (size_t i = 0; i < both.size(); i++) {
+        h ^= (unsigned)both[i];
+        h *= 16777619u;
+    }
+    return (int)(h & 0x7fffffffu);
+}
+
 static void BuildPalette() {
     const Preset& chosen = kPresets[ClampT(g_paletteIndex, 0, kPaletteCount - 1)];
     g_palette.ink.clear();
@@ -3977,6 +3993,20 @@ class Overlay {
     void NewScene();
     bool Occluded() const { return occluded_; }
     const RECT& Rect() const { return rect_; }
+    HWND Hwnd() const { return hwnd_; }
+
+    // Shift the window one pixel off its rectangle, or put it back. The
+    // window moves, rect_ does not, so the render target keeps its size and
+    // never has to be rebuilt, and the rebuild-only-when-moved comparison
+    // still sees the rectangle this overlay is meant to be covering.
+    void SetNudged(bool on) {
+        if (!hwnd_ || nudged_ == on) {
+            return;
+        }
+        nudged_ = on;
+        SetWindowPos(hwnd_, nullptr, rect_.left, rect_.top - (on ? 1 : 0),
+                     0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
     // Briefly show what just changed. The overlay is otherwise completely
     // clean, and this is the only text it ever draws.
     void FlashHud();
@@ -4021,6 +4051,7 @@ class Overlay {
     ID2D1BitmapRenderTarget* buf_ = nullptr;
     ID2D1Bitmap* bufBitmap_ = nullptr;
     bool occluded_ = false;
+    bool nudged_ = false;
     ID2D1SolidColorBrush* brush_ = nullptr;
 
     std::unique_ptr<Scene> scene_;
@@ -4714,6 +4745,73 @@ static float g_rotateTimer = 0;
 // a slow poll instead of stopping it, so the state can clear again.
 static bool g_allOccluded = false;
 
+// Windows decides an application is running fullscreen by looking for a window
+// that covers the monitor, and Focus Assist silences notifications while it
+// believes one is. Measured on Windows 11, this overlay is never counted: it
+// is forced to the bottom of the z-order on every position change, and a
+// window down there does not qualify even while it holds the foreground. That
+// is why it gives up no pixels and shows no seam.
+//
+// One measurement on one version is a thin thing to rest somebody's
+// notifications on, and older shells run older code. So rather than trusting
+// it, ask. While one of our own windows holds the foreground, nothing else can
+// be the fullscreen application, so if the shell answers QUNS_BUSY then the
+// assumption is wrong on this machine and we are the cause. The overlay then
+// steps one pixel off its rectangle, which is all it takes to stop covering
+// the monitor, and steps back when the focus goes elsewhere.
+//
+// Where the assumption holds, which is everywhere it has been run, the query
+// is the only thing that ever happens and nothing moves.
+static bool g_fullscreenNudge = false;
+static float g_notifyPoll = 0;
+
+static bool AnyOverlayForeground() {
+    HWND fg = GetForegroundWindow();
+    if (!fg) {
+        return false;
+    }
+    for (size_t i = 0; i < g_overlays.size(); i++) {
+        if (g_overlays[i]->Hwnd() == fg) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void PollFullscreenState(float dt) {
+    // Twice a second is plenty. This is off the render path, and it only
+    // matters while a window of ours is holding the foreground.
+    g_notifyPoll += dt;
+    if (g_notifyPoll < 0.5f) {
+        return;
+    }
+    g_notifyPoll = 0;
+
+    if (!AnyOverlayForeground()) {
+        g_fullscreenNudge = false;
+    } else if (!g_fullscreenNudge) {
+        // Only worth asking while it is still false. Once we have stepped
+        // aside the state reads clear again, and treating that as the answer
+        // would move the window back and forth for ever.
+        QUERY_USER_NOTIFICATION_STATE state = QUNS_ACCEPTS_NOTIFICATIONS;
+        if (SUCCEEDED(SHQueryUserNotificationState(&state)) &&
+            state == QUNS_BUSY) {
+            Wh_Log(L"This Windows build counts the overlay as a fullscreen "
+                   L"app; stepping one pixel aside so notifications are not "
+                   L"suppressed");
+            g_fullscreenNudge = true;
+        }
+    }
+
+    // Applied to every overlay on every poll rather than only on the change.
+    // SetNudged returns immediately when it is already where it should be, and
+    // this way a rebuild, which replaces every Overlay with a fresh one, does
+    // not leave the new windows sitting in the wrong place.
+    for (size_t i = 0; i < g_overlays.size(); i++) {
+        g_overlays[i]->SetNudged(g_fullscreenNudge);
+    }
+}
+
 static const UINT WM_VSH_SETTINGS = WM_APP + 1;
 static const UINT WM_VSH_QUIT = WM_APP + 2;
 
@@ -4751,6 +4849,7 @@ static int g_pendingStyle = 0, g_pendingAmount = 2, g_pendingParam = 500;
 // would write those defaults over whatever the user had actually set.
 static std::atomic<bool> g_paletteDirty{false};
 static int g_pendingPalette = 0, g_pendingPaletteFrom = 0;
+static int g_pendingCustomFrom = 0;
 
 // Seconds since the last change, counted only while something is unsaved. The
 // flush used to happen on hide alone, so a sign-out or a reboot that took the
@@ -4772,6 +4871,7 @@ static void SaveState(const Overlay* ov) {
 static void SavePalette(int index, int from) {
     g_pendingPalette = index;
     g_pendingPaletteFrom = from;
+    g_pendingCustomFrom = CustomColorStamp();
     g_paletteDirty = true;
     g_stateQuiet = 0;
 }
@@ -4792,6 +4892,7 @@ static void FlushState() {
     if (g_paletteDirty.exchange(false)) {
         Wh_SetIntValue(L"state.palette", g_pendingPalette);
         Wh_SetIntValue(L"state.paletteFrom", g_pendingPaletteFrom);
+        Wh_SetIntValue(L"state.customFrom", g_pendingCustomFrom);
     }
 }
 
@@ -5187,7 +5288,22 @@ static void ShowOverlays() {
     // the setting overrides it, so the settings UI is never a dead control.
     int fromSetting = PaletteIndexFromName(g_settings.palette);
     g_paletteIndex = fromSetting;
-    if (Wh_GetIntValue(L"state.paletteFrom", -1) == fromSetting) {
+    bool settingUnchanged =
+        Wh_GetIntValue(L"state.paletteFrom", -1) == fromSetting;
+
+    // Editing the custom colours says what you want to see just as plainly as
+    // picking from the dropdown does, so it has to count as the setting
+    // changing. It did not, and the result was a trap: with the palette set to
+    // custom, stepping away with Space and then going to change the colours
+    // left the stepped palette overriding them for ever, so the colour fields
+    // looked dead and only touching the dropdown got you out. Every other
+    // palette escaped it because choosing one is a change to the dropdown.
+    if (settingUnchanged && fromSetting == PaletteIndexFromName(L"custom") &&
+        Wh_GetIntValue(L"state.customFrom", -1) != CustomColorStamp()) {
+        settingUnchanged = false;
+    }
+
+    if (settingUnchanged) {
         g_paletteIndex =
             ClampT(Wh_GetIntValue(L"state.palette", fromSetting), 0,
                    kPaletteCount - 1);
@@ -5228,6 +5344,8 @@ static void ShowOverlays() {
     // this would start the next one on the half second poll with its rotation
     // frozen, until the first render cleared it.
     g_allOccluded = false;
+    g_fullscreenNudge = false;
+    g_notifyPoll = 0;
     if (g_settings.globalKeys) {
         InstallKbdHook();
     }
@@ -5700,6 +5818,8 @@ static DWORD WINAPI WorkerThread(LPVOID) {
                 }
             }
         }
+
+        PollFullscreenState(dt);
 
         bool allOccluded = !g_overlays.empty();
         for (size_t i = 0; i < g_overlays.size(); i++) {
